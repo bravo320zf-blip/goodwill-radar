@@ -18,6 +18,10 @@ HTML_CONTENT = """<!DOCTYPE html>
         .pills { display: flex; gap: 8px; margin-top: 6px; }
         .pill { background: rgba(56, 189, 248, 0.1); border: 1px solid var(--accent); color: var(--accent); font-size: 11px; padding: 3px 8px; border-radius: 99px; }
         
+        .top-nav { display: flex; gap: 12px; margin-bottom: 20px; }
+        .nav-link { background: #1e293b; color: #fff; text-decoration: none; padding: 8px 14px; border-radius: 6px; font-size: 12px; font-weight: 600; border: 1px solid var(--border); }
+        .nav-link:hover { border-color: var(--accent); color: var(--accent); }
+
         .importer-box { background: var(--card); border: 1px solid var(--border); padding: 16px; border-radius: 8px; margin-bottom: 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
         .importer-box input { background: #0b0f19; border: 1px solid var(--border); color: #fff; padding: 8px 12px; border-radius: 4px; font-size: 13px; }
         .importer-box input[type="text"] { flex-grow: 1; min-width: 250px; }
@@ -31,7 +35,6 @@ HTML_CONTENT = """<!DOCTYPE html>
         tr:hover td { background: #1a243c; }
         
         .item-title { font-weight: 600; font-size: 14px; color: #fff; }
-        .search-term-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
         .comp-input { width: 80px; background: #0b0f19; border: 1px solid var(--border); color: #fff; padding: 4px 6px; border-radius: 4px; font-size: 13px; font-weight: 600; text-align: right; }
         .max-bid { color: var(--accent); font-weight: 800; font-size: 15px; }
         .profit { color: var(--profit); font-weight: 700; font-size: 14px; }
@@ -57,11 +60,17 @@ HTML_CONTENT = """<!DOCTYPE html>
         </div>
     </div>
 
+    <div class="top-nav">
+        <a href="https://shopgoodwill.com/categories/board-games" target="_blank" class="nav-link">📂 Open SGW Board Games Category ↗</a>
+        <a href="https://www.goodwillfinds.com/search/?q=board+game" target="_blank" class="nav-link">🛍️ Open GoodwillFinds Board Games ↗</a>
+        <a href="https://www.ebay.com/sch/i.html?_nkw=vintage+board+game&LH_Sold=1&LH_Complete=1" target="_blank" class="nav-link">📈 eBay Recent Sold Games ↗</a>
+    </div>
+
     <div class="importer-box">
-        <strong>⚡ Quick Add / Inspect:</strong>
-        <input type="text" id="add-title" placeholder="Board Game (e.g. Catan 3D, Nemesis, Blood Rage)">
+        <strong>⚡ Quick Inspect:</strong>
+        <input type="text" id="add-title" placeholder="Game Name (e.g. HeroQuest, Dark Tower, Nemesis)">
         <input type="number" id="add-bid" placeholder="Current Bid \$" value="15.00" step="1">
-        <input type="number" id="add-comp" placeholder="eBay Sold \$" value="80.00" step="5">
+        <input type="number" id="add-comp" placeholder="eBay Sold \$" value="75.00" step="5">
         <button class="btn-add" onclick="addNewGame()">+ Add to Radar</button>
     </div>
 
@@ -83,40 +92,34 @@ HTML_CONTENT = """<!DOCTYPE html>
     </table>
 
     <script>
-        // Clean search terms that ShopGoodwill's router accepts without hanging
         const DEFAULT_RADAR = [
-            { display: "HeroQuest", query: "HeroQuest", curr_bid: 15.00, ebay_comp: 135.00 },
-            { display: "Dark Tower", query: "Dark Tower", curr_bid: 25.00, ebay_comp: 220.00 },
-            { display: "Heroscape Rise of the Valkyrie", query: "Heroscape", curr_bid: 18.00, ebay_comp: 95.00 },
-            { display: "StarCraft The Board Game", query: "StarCraft board game", curr_bid: 35.00, ebay_comp: 210.00 },
-            { display: "Space Hulk", query: "Space Hulk", curr_bid: 30.00, ebay_comp: 180.00 },
-            { display: "Battlestar Galactica Board Game", query: "Battlestar Galactica", curr_bid: 20.00, ebay_comp: 140.00 },
-            { display: "Kingdom Death Monster", query: "Kingdom Death", curr_bid: 60.00, ebay_comp: 320.00 },
-            { display: "Shadows of Brimstone", query: "Shadows of Brimstone", curr_bid: 25.00, ebay_comp: 110.00 },
-            { display: "Warhammer Quest", query: "Warhammer Quest", curr_bid: 40.00, ebay_comp: 240.00 },
-            { display: "Fireball Island", query: "Fireball Island", curr_bid: 20.00, ebay_comp: 125.00 },
-            { display: "Dune Board Game (Avalon Hill)", query: "Dune Avalon Hill", curr_bid: 15.00, ebay_comp: 75.00 },
-            { display: "Mansions of Madness 2nd Edition", query: "Mansions of Madness", curr_bid: 20.00, ebay_comp: 85.00 }
+            { name: "HeroQuest", curr_bid: 15.00, ebay_comp: 135.00 },
+            { name: "Dark Tower", curr_bid: 25.00, ebay_comp: 220.00 },
+            { name: "Heroscape", curr_bid: 18.00, ebay_comp: 95.00 },
+            { name: "StarCraft board game", curr_bid: 35.00, ebay_comp: 210.00 },
+            { name: "Space Hulk", curr_bid: 30.00, ebay_comp: 180.00 },
+            { name: "Battlestar Galactica", curr_bid: 20.00, ebay_comp: 140.00 },
+            { name: "Kingdom Death", curr_bid: 60.00, ebay_comp: 320.00 },
+            { name: "Shadows of Brimstone", curr_bid: 25.00, ebay_comp: 110.00 },
+            { name: "Warhammer Quest", curr_bid: 40.00, ebay_comp: 240.00 },
+            { name: "Fireball Island", curr_bid: 20.00, ebay_comp: 125.00 },
+            { name: "Mansions of Madness", curr_bid: 20.00, ebay_comp: 85.00 }
         ];
 
-        let radarItems = JSON.parse(localStorage.getItem('boardgame_radar_v2')) || DEFAULT_RADAR;
+        let radarItems = JSON.parse(localStorage.getItem('boardgame_radar_v3')) || DEFAULT_RADAR;
 
         function calculateMetrics(currBid, compPrice) {
             const landedCost = currBid + 15.0 + 3.0; // \$15 FedEx + \$3 Handling
             if (compPrice <= 0) return { landedCost, maxBid: 0, profit: 0, roi: 0 };
             
-            // Net eBay payout after 13.25% fee, \$0.30 fixed, and \$10 outbound shipping box reserve
+            // Net eBay payout after 13.25% fee, \$0.30 fixed, and \$10 outbound postage
             const netEbay = (compPrice * 0.8675) - 0.30 - 10.0;
             const profit = netEbay - landedCost;
             const roi = (profit / landedCost) * 100;
             
-            // Formula for Max Bid to secure >= 20% ROI:
+            // Formula for Max Bid: [Net Payout / 1.20] - (FedEx Shipping + Handling)
             const maxBid = Math.max(0, (netEbay / 1.20) - 18.0);
             return { landedCost, maxBid, profit, roi };
-        }
-
-        function cleanQuery(text) {
-            return text.replace(/[\(\)\[\]]/g, "").trim();
         }
 
         function renderRows() {
@@ -125,16 +128,15 @@ HTML_CONTENT = """<!DOCTYPE html>
                 const m = calculateMetrics(item.curr_bid, item.ebay_comp);
                 const inZone = item.curr_bid <= m.maxBid;
                 
-                // Clean URL format without special characters to prevent SGW Angular router hangs
-                const searchParam = encodeURIComponent(cleanQuery(item.query || item.display));
-                const gwSearchUrl = `https://www.shopgoodwill.com/categories/listing?st=${searchParam}&sg=Keyword&c=&s=&lp=0&hp=0&sbn=false&spo=false&snpo=false&socs=false&sd=false&sca=false&sae=0&pn=1&sgst=0&sgcl=0&sortColumn=1&sortDescending=false`;
-                const ebaySearchUrl = `https://www.ebay.com/sch/i.html?_nkw=${searchParam}&LH_Sold=1&LH_Complete=1`;
+                // Uses the standard non-crashing search query format
+                const encoded = encodeURIComponent(item.name);
+                const gwUrl = `https://shopgoodwill.com/search?st=${encoded}`;
+                const ebayUrl = `https://www.ebay.com/sch/i.html?_nkw=${encoded}&LH_Sold=1&LH_Complete=1`;
                 
                 return `
                     <tr id="row-${idx}">
                         <td>
-                            <div class="item-title">${item.display}</div>
-                            <div class="search-term-sub">Searches: "${cleanQuery(item.query || item.display)}"</div>
+                            <div class="item-title">${item.name}</div>
                             <span class="zone-pill ${inZone ? 'zone-green' : 'zone-red'}">
                                 ${inZone ? '🟢 IN BUY ZONE' : '🔴 OVER MAX BID'}
                             </span>
@@ -158,8 +160,8 @@ HTML_CONTENT = """<!DOCTYPE html>
                             <strong>${m.roi.toFixed(1)}%</strong>
                         </td>
                         <td>
-                            <a href="${gwSearchUrl}" target="_blank" class="btn btn-gw">Goodwill Auctions ↗</a>
-                            <a href="${ebaySearchUrl}" target="_blank" class="btn btn-ebay">eBay Sold ↗</a>
+                            <a href="${gwUrl}" target="_blank" class="btn btn-gw">Goodwill ↗</a>
+                            <a href="${ebayUrl}" target="_blank" class="btn btn-ebay">eBay Sold ↗</a>
                             <button class="btn-del" onclick="deleteGame(${idx})">✕</button>
                         </td>
                     </tr>
@@ -178,12 +180,12 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         function addNewGame() {
-            const title = document.getElementById("add-title").value.trim();
+            const name = document.getElementById("add-title").value.trim();
             const bid = parseFloat(document.getElementById("add-bid").value) || 15.00;
-            const comp = parseFloat(document.getElementById("add-comp").value) || 80.00;
-            if (!title) return alert("Please enter a game name.");
+            const comp = parseFloat(document.getElementById("add-comp").value) || 75.00;
+            if (!name) return alert("Please enter a game name.");
             
-            radarItems.unshift({ display: title, query: cleanQuery(title), curr_bid: bid, ebay_comp: comp });
+            radarItems.unshift({ name, curr_bid: bid, ebay_comp: comp });
             document.getElementById("add-title").value = "";
             saveAndRender();
         }
@@ -194,7 +196,7 @@ HTML_CONTENT = """<!DOCTYPE html>
         }
 
         function saveAndRender() {
-            localStorage.setItem('boardgame_radar_v2', JSON.stringify(radarItems));
+            localStorage.setItem('boardgame_radar_v3', JSON.stringify(radarItems));
             renderRows();
         }
 
