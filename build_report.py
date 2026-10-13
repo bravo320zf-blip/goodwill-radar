@@ -12,78 +12,113 @@ HEADERS = {
     "Referer": "https://www.shopgoodwill.com/"
 }
 
-TARGET_GAMES = [
-    "HeroQuest", "Dark Tower", "Heroscape", "StarCraft Board Game",
-    "Space Hulk", "Battlestar Galactica", "Shadows of Brimstone",
-    "Fireball Island", "Kingdom Death", "Warhammer Quest",
-    "Dune Board Game", "Mansions of Madness", "Catan 3D", "Nemesis Board Game"
-]
+# Negative keywords for junk/mass-market games where FedEx $15 destroys margins
+EXCLUDE_TERMS = {
+    "monopoly", "scrabble", "clue", "trivial pursuit", "candyland", 
+    "chutes", "yahtzee", "bingo", "poker", "chess set", "checkers",
+    "scene it", "cranium", "apples to apples", "cards against humanity"
+}
 
 def clean_game_title(title):
-    title = re.sub(r"(?i)\b(vintage|board game|complete|untested|as-is|lot of|sealed|used|rare|nib|cib)\b", "", title)
-    return " ".join(re.sub(r"[^\w\s]", " ", title).split()[:4])
+    # Remove junk auction boilerplate words
+    cleaned = re.sub(r"(?i)\b(vintage|board game|complete|untested|as-is|lot of|sealed|used|rare|nib|cib|edition|game)\b", "", title)
+    words = [w for w in re.sub(r"[^\w\s]", " ", cleaned).split() if len(w) > 2]
+    return " ".join(words[:4])
 
 def fetch_ebay_sold(clean_title):
+    if not clean_title or len(clean_title) < 3:
+        return 0.0, 0
     encoded = requests.utils.quote(clean_title)
     url = f"https://www.ebay.com/sch/i.html?_nkw={encoded}&LH_Sold=1&LH_Complete=1&_sop=12"
     try:
         r = requests.get(url, headers={"User-Agent": HEADERS["User-Agent"]}, timeout=8)
-        if r.status_code != 200: 
+        if r.status_code != 200:
             return 0.0, 0
         soup = BeautifulSoup(r.text, "html.parser")
-        prices = [float(re.search(r"\$([0-9,]+\.?[0-9]*)", e.get_text()).group(1).replace(",", "")) 
-                  for e in soup.select(".s-item__price") if re.search(r"\$([0-9,]+\.?[0-9]*)", e.get_text())]
-        prices = [p for p in prices if p >= 15.0]
-        if not prices: 
+        prices = []
+        for e in soup.select(".s-item__price"):
+            m = re.search(r"\$([0-9,]+\.?[0-9]*)", e.get_text())
+            if m:
+                val = float(m.group(1).replace(",", ""))
+                # Filter out replacement pieces / single cards under $12
+                if val >= 12.0:
+                    prices.append(val)
+        if not prices:
             return 0.0, 0
         prices.sort()
+        # Take median to avoid replacement pieces and graded/mint outliers
         return prices[len(prices) // 2], len(prices)
-    except Exception:
+    except Exception as e:
         return 0.0, 0
 
 def scan_shopgoodwill():
     gw_api = "https://buyerapi.shopgoodwill.com/api/Search/ItemListing"
-    seen_ids = set()
     deals = []
-    
-    for query in TARGET_GAMES:
+    seen_ids = set()
+
+    # Search queries: broad category sweep + top vintage keywords
+    search_queries = [
+        {"searchText": "board game", "categoryId": 457},
+        {"searchText": "vintage board game", "categoryId": 0},
+        {"searchText": "tabletop game", "categoryId": 0},
+        {"searchText": "Warhammer", "categoryId": 0},
+        {"searchText": "HeroQuest", "categoryId": 0}
+    ]
+
+    for q in search_queries:
+        payload = {
+            "searchText": q["searchText"],
+            "categoryId": q["categoryId"],
+            "page": 1,
+            "pageSize": 20,
+            "sortColumn": 1,  # Ending soonest
+            "sortDescending": False
+        }
         try:
-            payload = {
-                "searchText": query,
-                "page": 1,
-                "pageSize": 6,
-                "sortColumn": 1, # Ending soonest
-                "sortDescending": False
-            }
             res = requests.post(gw_api, json=payload, headers=HEADERS, timeout=10)
             if res.status_code != 200:
+                print(f"ShopGoodwill query error for '{q['searchText']}': status {res.status_code}")
                 continue
+            
             items = res.json().get("searchResults", {}).get("items", [])
+            print(f"Found {len(items)} items for '{q['searchText']}'")
+            
             for itm in items:
                 item_id = str(itm.get("itemId", ""))
                 if not item_id or item_id in seen_ids:
                     continue
                 seen_ids.add(item_id)
-                
+
                 title = itm.get("title", "")
+                title_lower = title.lower()
+
+                # Skip mass-market worthless items
+                if any(x in title_lower for x in EXCLUDE_TERMS):
+                    continue
+
                 curr_bid = float(itm.get("currentPrice", 0.0))
+                # Only analyze if bid is still low enough to leave margin
+                if curr_bid > 50.0:
+                    continue
+
                 end_time = itm.get("remainingTime", "Active")
                 img_url = itm.get("imageURL", "").replace("\\", "/")
-                
+
                 landed_cost = curr_bid + 15.0 + 3.0  # $15 FedEx + $3 Handling
                 clean_name = clean_game_title(title)
                 ebay_avg, comps = fetch_ebay_sold(clean_name)
-                
-                if comps >= 2 and ebay_avg > 0:
-                    # Net eBay payout after 13.25% fee, $0.30 fixed, and $10 outbound postage reserve
-                    net_ebay = (ebay_avg * 0.8675) - 0.30 - 10.0
+
+                if comps >= 2 and ebay_avg > landed_cost:
+                    # Net eBay payout after 13.25% fee, $0.30 fixed, and $8 outbound shipping reserve
+                    net_ebay = (ebay_avg * 0.8675) - 0.30 - 8.0
                     profit = net_ebay - landed_cost
                     roi = (profit / landed_cost) * 100 if landed_cost > 0 else 0
-                    
+
                     # Formula for Max Allowed Bid to hit 20% Net Profit:
                     max_bid = max(0.0, (net_ebay / 1.20) - 18.0)
-                    
-                    if roi >= 20.0 and profit >= 15.0:
+
+                    # Criteria: Min 20% ROI and at least $8 net profit
+                    if roi >= 20.0 and profit >= 8.0:
                         deals.append({
                             "title": title,
                             "img": img_url,
@@ -98,12 +133,13 @@ def scan_shopgoodwill():
                             "gw_url": f"https://www.shopgoodwill.com/item/{item_id}",
                             "ebay_url": f"https://www.ebay.com/sch/i.html?_nkw={requests.utils.quote(clean_name)}&LH_Sold=1&LH_Complete=1"
                         })
-            time.sleep(0.5)
-        except Exception:
+            time.sleep(0.4)
+        except Exception as e:
+            print(f"Exception scanning '{q['searchText']}': {e}")
             continue
-            
+
     deals.sort(key=lambda x: x["profit"], reverse=True)
-    return deals[:15]
+    return deals[:25]
 
 def generate_html(deals):
     rows = ""
@@ -132,9 +168,9 @@ def generate_html(deals):
             </td>
         </tr>
         """
-        
+
     if not deals:
-        rows = '<tr><td colspan="8" style="text-align:center; padding: 40px; color: #94a3b8;">No auctions currently meet the 20%+ ROI threshold. Check back on the next scheduled run.</td></tr>'
+        rows = '<tr><td colspan="8" style="text-align:center; padding: 40px; color: #94a3b8;">No auctions currently meet the 20%+ ROI threshold. Check back on the next run.</td></tr>'
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -172,8 +208,8 @@ def generate_html(deals):
             <h1>⚡ Goodwill to eBay Board Game Radar</h1>
             <div class="pills">
                 <span class="pill">Min 20% Net ROI</span>
+                <span class="pill">Category #457 Active</span>
                 <span class="pill">FedEx $15 Included</span>
-                <span class="pill">Auto-updates every 30m</span>
             </div>
         </div>
     </div>
